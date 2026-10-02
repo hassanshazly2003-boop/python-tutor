@@ -47,16 +47,17 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Install Dependencies
+      - name: Fix Gradle Permissions & Install Dependencies
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
+          chmod +x android/gradlew || true
           flutter clean
           flutter pub get
 
       - name: Build APK
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          flutter clean
+          chmod +x android/gradlew || true
           flutter build apk --release --no-tree-shake-icons
 
       - name: Upload APK Artifact
