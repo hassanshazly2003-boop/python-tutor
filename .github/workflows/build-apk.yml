@@ -52,15 +52,14 @@ jobs:
         run: |
           flutter pub get
 
+      - name: Fix Executable Permissions for Gradle
+        run: |
+          # Give full executable permissions to gradlew across the entire workspace
+          find . -name "gradlew" -exec chmod +x {} +
+
       - name: Build APK via Flutter CLI
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          # Find gradlew dynamically and set executable permission
-          GRADLEW=$(find . -name gradlew -type f | head -1)
-          if [ -n "$GRADLEW" ]; then
-            chmod +x "$GRADLEW"
-          fi
-          
           flutter build apk --release --no-tree-shake-icons
 
       - name: Upload APK Artifact
