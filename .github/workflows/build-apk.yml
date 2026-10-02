@@ -1,45 +1,63 @@
-name: Build Android APK
+name: إنشاء ملف APK لنظام Android
 
 on:
   workflow_dispatch:
   push:
-    paths:
-      - 'python-tutor-project.zip'
-      - '.github/workflows/build-apk.yml'
+    branches:
+      - main
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: سحب سير العمل
         uses: actions/checkout@v4
 
-      - name: Unpack Flutter project
+      - name: فك ضغط مشروع Flutter
         run: |
           mkdir -p app
-          unzip -q python-tutor-project.zip -d app
+          unzip -q github-mobile-upload-pack.zip -d app
 
-      - name: Set up Java
+          echo "محتويات app:"
+          find app -maxdepth 3 -type f | head -100
+
+          PUBSPEC=$(find app -name pubspec.yaml -type f | head -1)
+
+          if [ -z "$PUBSPEC" ]; then
+            echo "ERROR: لم يتم العثور على pubspec.yaml"
+            exit 1
+          fi
+
+          PROJECT_DIR=$(dirname "$PUBSPEC")
+          echo "Flutter project: $PROJECT_DIR"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+      - name: إعداد Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Flutter
+      - name: إعداد Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
 
-      - name: Build APK
-        working-directory: app
+      - name: تثبيت الاعتمادات
+        working-directory: ${{ env.PROJECT_DIR }}
         run: |
           flutter pub get
+
+      - name: بناء APK
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
           flutter build apk --release
 
-      - name: Upload APK
+      - name: رفع APK
         uses: actions/upload-artifact@v4
         with:
-          name: python-tutor-release-apk
-          path: app/build/app/outputs/flutter-apk/app-release.apk
+          name: app-release-apk
+          path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
