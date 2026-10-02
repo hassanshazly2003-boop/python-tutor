@@ -18,14 +18,12 @@ jobs:
         run: |
           mkdir -p app
           
-          # Unzip the correct project archive directly
           if [ -f "python-tutor-project.zip" ]; then
             unzip -q python-tutor-project.zip -d app
           else
             find . -name "*.zip" -exec unzip -o -q {} -d app \;
           fi
 
-          # Find pubspec.yaml path dynamically
           PUBSPEC=$(find app -name "pubspec.yaml" -type f | head -1)
 
           if [ -z "$PUBSPEC" ]; then
@@ -52,12 +50,14 @@ jobs:
       - name: Install Dependencies
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
+          flutter clean
           flutter pub get
 
       - name: Build APK
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          flutter build apk --release
+          flutter clean
+          flutter build apk --release --no-tree-shake-icons
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
