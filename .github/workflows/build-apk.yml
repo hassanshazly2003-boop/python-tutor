@@ -1,4 +1,4 @@
-name: إنشاء ملف APK لنظام Android
+name: Build Android APK
 
 on:
   workflow_dispatch:
@@ -11,53 +11,61 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: سحب سير العمل
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: فك ضغط مشروع Flutter
+      - name: Extract Flutter Project
         run: |
           mkdir -p app
-          unzip -q github-mobile-upload-pack.zip -d app
+          
+          # Find and unzip the project archive if present
+          ZIP_FILE=$(find . -maxdepth 2 -name "*.zip" | head -1)
+          if [ -n "$ZIP_FILE" ]; then
+            echo "Extracting $ZIP_FILE..."
+            unzip -q "$ZIP_FILE" -d app
+          else
+            echo "No zip file found, checking workspace directly..."
+            cp -r . app/ 2>/dev/null || true
+          fi
 
-          echo "محتويات app:"
-          find app -maxdepth 3 -type f | head -100
-
-          PUBSPEC=$(find app -name pubspec.yaml -type f | head -1)
+          # Search for pubspec.yaml file dynamically
+          PUBSPEC=$(find . -name pubspec.yaml -type f | head -1)
 
           if [ -z "$PUBSPEC" ]; then
-            echo "ERROR: لم يتم العثور على pubspec.yaml"
+            echo "ERROR: pubspec.yaml was not found in the project."
             exit 1
           fi
 
           PROJECT_DIR=$(dirname "$PUBSPEC")
-          echo "Flutter project: $PROJECT_DIR"
+          echo "Found Flutter project at: $PROJECT_DIR"
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-      - name: إعداد Java
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
+          distribution: 'temurin'
           java-version: '17'
 
-      - name: إعداد Flutter
+      - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          channel: 'stable'
           cache: true
 
-      - name: تثبيت الاعتمادات
+      - name: Install Dependencies
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           flutter pub get
 
-      - name: بناء APK
+      - name: Build APK
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           flutter build apk --release
 
-      - name: رفع APK
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: app-release-apk
           path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
+          
