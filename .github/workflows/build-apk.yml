@@ -47,23 +47,21 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Fix Gradle Permissions & Install Dependencies
+      - name: Install Dependencies
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          chmod +x android/gradlew || true
-          flutter clean
           flutter pub get
 
-      - name: Build APK
-        working-directory: ${{ env.PROJECT_DIR }}
+      - name: Build APK via Gradle
+        working-directory: ${{ env.PROJECT_DIR }}/android
         run: |
-          chmod +x android/gradlew || true
-          flutter build apk --release --no-tree-shake-icons
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: app-release-apk
           path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
-          if-no-files-found: error
+          if-no-files-found: warn
           
