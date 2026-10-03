@@ -1,71 +1,39 @@
-name: Build Android APK
-
+name: Build APK
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Extract Flutter Project
-        run: |
-          mkdir -p app
-          
-          if [ -f "python-tutor-project.zip" ]; then
-            unzip -q python-tutor-project.zip -d app
-          else
-            find . -name "*.zip" -exec unzip -o -q {} -d app \;
-          fi
-
-          PUBSPEC=$(find app -name "pubspec.yaml" -type f | head -1)
-
-          if [ -z "$PUBSPEC" ]; then
-            echo "ERROR: pubspec.yaml was not found."
-            exit 1
-          fi
-
-          PROJECT_DIR=$(dirname "$PUBSPEC")
-          echo "Found Flutter project at: $PROJECT_DIR"
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-
+      - uses: actions/checkout@v4
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: '3.22.2'
           channel: 'stable'
-          cache: true
-
-      - name: Install Dependencies
-        working-directory: ${{ env.PROJECT_DIR }}
+      - name: Find and extract project zip
         run: |
-          flutter pub get
-
-      - name: Fix Executable Permissions for Gradle
-        run: |
-          # Give full executable permissions to gradlew across the entire workspace
-          find . -name "gradlew" -exec chmod +x {} +
-
-      - name: Build APK via Flutter CLI
-        working-directory: ${{ env.PROJECT_DIR }}
-        run: |
-          flutter build apk --release --no-tree-shake-icons
-
-      - name: Upload APK Artifact
+          ZIP_FILE=$(find . -name "*.zip" | head -n 1)
+          echo "Found zip: $ZIP_FILE"
+          unzip -o "$ZIP_FILE" -d app_src
+          # انقل محتويات اول فولدر جواه للـ root لو موجود
+          if [ -d "app_src" ]; then
+            # لو في فولدر واحد بس جواه انقل اللي جواه
+            INNER=$(find app_src -mindepth 1 -maxdepth 1 -type d | head -n 1)
+            if [ -n "$INNER" ]; then
+              cp -r $INNER/* ./ || true
+              cp -r $INNER/.* ./ 2>/dev/null || true
+            else
+              cp -r app_src/* ./ || true
+            fi
+          fi
+          ls -la
+      - name: Get dependencies
+        run: flutter pub get
+      - name: Build APK
+        run: flutter build apk --release
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: app-release-apk
-          path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
-          if-no-files-found: warn
-          
+          path: build/app/outputs/flutter-apk/app-release.apk
