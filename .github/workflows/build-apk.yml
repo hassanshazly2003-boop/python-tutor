@@ -6,34 +6,36 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.22.2'
           channel: 'stable'
-      - name: Find and extract project zip
+      - name: Extract project
         run: |
-          ZIP_FILE=$(find . -name "*.zip" | head -n 1)
-          echo "Found zip: $ZIP_FILE"
-          unzip -o "$ZIP_FILE" -d app_src
-          # انقل محتويات اول فولدر جواه للـ root لو موجود
-          if [ -d "app_src" ]; then
-            # لو في فولدر واحد بس جواه انقل اللي جواه
-            INNER=$(find app_src -mindepth 1 -maxdepth 1 -type d | head -n 1)
-            if [ -n "$INNER" ]; then
-              cp -r $INNER/* ./ || true
-              cp -r $INNER/.* ./ 2>/dev/null || true
-            else
-              cp -r app_src/* ./ || true
-            fi
-          fi
           ls -la
-      - name: Get dependencies
-        run: flutter pub get
+          ZIP=$(find . -name "*.zip" | head -n 1)
+          if [ -n "$ZIP" ]; then
+            unzip -o "$ZIP" -d .
+          fi
+          find . -name "pubspec.yaml" | head -n 20
       - name: Build APK
-        run: flutter build apk --release
+        run: |
+          PUB=$(find . -name "pubspec.yaml" -not -path "*/.pub-cache/*" | head -n 1)
+          echo "Found pubspec at: $PUB"
+          DIR=$(dirname "$PUB")
+          echo "Project dir: $DIR"
+          cd "$DIR"
+          flutter clean
+          flutter pub get
+          flutter build apk --release
+          # انقل الـ APK للـ root عشان نرفعه
+          cp build/app/outputs/flutter-apk/app-release.apk $GITHUB_WORKSPACE/app-release.apk || true
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-release-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          name: app-release
+          path: app-release.apk
