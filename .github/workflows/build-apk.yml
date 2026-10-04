@@ -16,24 +16,33 @@ jobs:
           channel: 'stable'
       - name: Extract project
         run: |
+          ls -la
           ZIP=$(find . -name "*.zip" | head -n 1)
+          echo "ZIP=$ZIP"
           if [ -n "$ZIP" ]; then
             unzip -o "$ZIP" -d .
           fi
-          find . -name "pubspec.yaml" | head -n 5
+          echo "---- after unzip ----"
+          find . -maxdepth 3 -type f -name "pubspec.yaml" | head -n 10
+          ls -la
       - name: Build APK
         run: |
-          PUB=$(find . -name "pubspec.yaml" -not -path "*/.pub-cache/*" | head -n 1)
+          PUB=$(find . -type f -name "pubspec.yaml" -not -path "*/.pub-cache/*" -not -path "*/.github/*" | head -n 1)
+          echo "PUB found at: $PUB"
           DIR=$(dirname "$PUB")
-          echo "Project dir: $DIR"
+          echo "DIR is: $DIR"
           cd "$DIR"
-          # إصلاح مشكلة flutter_lints
-          sed -i 's/flutter_lints: \^5\.0\.0/flutter_lints: ^3.0.0/' pubspec.yaml || true
-          sed -i 's/flutter_lints: \^5\.\.*.*/flutter_lints: ^3.0.0/' pubspec.yaml || true
-          cat pubspec.yaml | grep lints
+          echo "Current dir content:"
+          ls -la
+          echo "Android content:"
+          ls -la android || true
+          # إصلاحات
+          sed -i 's/flutter_lints: \^5\..*/flutter_lints: ^3.0.0/' pubspec.yaml || true
+          chmod +x android/gradlew || true
           flutter clean
           flutter pub get
           flutter build apk --release
+          # انقل الـ APK
           cp build/app/outputs/flutter-apk/app-release.apk $GITHUB_WORKSPACE/app-release.apk
       - name: Upload APK
         uses: actions/upload-artifact@v4
