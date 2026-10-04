@@ -18,18 +18,39 @@ jobs:
         run: |
           ZIP=$(find . -maxdepth 2 -name "*.zip" | head -n 1)
           unzip -o "$ZIP" -d .
-          # دور على المشروع اللي جواه android
-          PUB=$(find . -type f -name "pubspec.yaml" -not -path "*/.pub-cache/*" | while read f; do
-            d=$(dirname "$f")
-            [ -d "$d/android" ] && echo "$f"
-          done | head -n 1)
+          PUB=$(find . -type f -name "pubspec.yaml" -not -path "*/.pub-cache/*" | while read f; do d=$(dirname "$f"); [ -d "$d/android" ] && echo "$f"; done | head -n 1)
           DIR=$(dirname "$PUB")
-          echo "Building in: $DIR"
+          echo "DIR=$DIR"
           cd "$DIR"
-          # ده السطر اللي بيصلح المشكلة بتاعتك
+          
+          # 1- نعمل android جديد سليم
           rm -rf android
           flutter create --platforms=android .
+          
+          # 2- نصلح NDK
+          echo "Fixing NDK..."
+          if [ -f android/app/build.gradle.kts ]; then
+            sed -i 's/ndkVersion = ".*"/ndkVersion = "27.0.12077973"/' android/app/build.gradle.kts || true
+            if ! grep -q "ndkVersion" android/app/build.gradle.kts; then
+              sed -i '/android {/a \    ndkVersion = "27.0.12077973"' android/app/build.gradle.kts
+            fi
+          fi
+          if [ -f android/app/build.gradle ]; then
+            if ! grep -q "ndkVersion" android/app/build.gradle; then
+              sed -i '/android {/a \    ndkVersion "27.0.12077973"' android/app/build.gradle
+            else
+              sed -i 's/ndkVersion .*/ndkVersion "27.0.12077973"/' android/app/build.gradle
+            fi
+          fi
+          
+          # 3- نصلح Uint8List
+          echo "Fixing Uint8List..."
+          if ! grep -q "dart:typed_data" lib/main.dart; then
+            sed -i "1i import 'dart:typed_data';" lib/main.dart
+          fi
+          
           sed -i 's/flutter_lints: \^5\..*/flutter_lints: ^3.0.0/' pubspec.yaml || true
+          
           flutter clean
           flutter pub get
           flutter build apk --release
