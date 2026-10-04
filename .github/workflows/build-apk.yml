@@ -20,40 +20,54 @@ jobs:
           unzip -o "$ZIP" -d .
           PUB=$(find . -type f -name "pubspec.yaml" -not -path "*/.pub-cache/*" | while read f; do d=$(dirname "$f"); [ -d "$d/android" ] && echo "$f"; done | head -n 1)
           DIR=$(dirname "$PUB")
-          echo "DIR=$DIR"
           cd "$DIR"
           
-          # 1- نعمل android جديد سليم
           rm -rf android
           flutter create --platforms=android .
           
-          # 2- نصلح NDK
-          echo "Fixing NDK..."
+          # 1- NDK
           if [ -f android/app/build.gradle.kts ]; then
             sed -i 's/ndkVersion = ".*"/ndkVersion = "27.0.12077973"/' android/app/build.gradle.kts || true
             if ! grep -q "ndkVersion" android/app/build.gradle.kts; then
               sed -i '/android {/a \    ndkVersion = "27.0.12077973"' android/app/build.gradle.kts
             fi
           fi
-          if [ -f android/app/build.gradle ]; then
-            if ! grep -q "ndkVersion" android/app/build.gradle; then
-              sed -i '/android {/a \    ndkVersion "27.0.12077973"' android/app/build.gradle
-            else
-              sed -i 's/ndkVersion .*/ndkVersion "27.0.12077973"/' android/app/build.gradle
-            fi
-          fi
           
-          # 3- نصلح Uint8List
-          echo "Fixing Uint8List..."
+          # 2- Fix Uint8List
           if ! grep -q "dart:typed_data" lib/main.dart; then
             sed -i "1i import 'dart:typed_data';" lib/main.dart
+          fi
+          
+          # 3- إصلاح R8 / ML Kit - أهم حاجة
+          echo "Fixing R8 / ML Kit..."
+          # نطفي الـ minify
+          if [ -f android/app/build.gradle.kts ]; then
+            sed -i 's/isMinifyEnabled = true/isMinifyEnabled = false/g' android/app/build.gradle.kts
+            sed -i 's/isShrinkResources = true/isShrinkResources = false/g' android/app/build.gradle.kts
+          fi
+          if [ -f android/app/build.gradle ]; then
+            sed -i 's/minifyEnabled true/minifyEnabled false/g' android/app/build.gradle
+            sed -i 's/shrinkResources true/shrinkResources false/g' android/app/build.gradle
+          fi
+          
+          # نضيف keep rules لـ ML Kit
+          mkdir -p android/app/
+          echo "-keep class com.google.mlkit.** { *; }
+          -dontwarn com.google.mlkit.**
+          -keep class com.google.android.gms.** { *; }" > android/app/proguard-rules.pro
+          
+          # نضيف proguard file في الـ build لو مش موجود
+          if [ -f android/app/build.gradle.kts ]; then
+            if ! grep -q "proguard-rules.pro" android/app/build.gradle.kts; then
+              sed -i '/isMinifyEnabled = false/a \            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")' android/app/build.gradle.kts || true
+            fi
           fi
           
           sed -i 's/flutter_lints: \^5\..*/flutter_lints: ^3.0.0/' pubspec.yaml || true
           
           flutter clean
           flutter pub get
-          flutter build apk --release
+          flutter build apk --release --no-tree-shake-icons
           cp build/app/outputs/flutter-apk/app-release.apk $GITHUB_WORKSPACE/app-release.apk
       - name: Upload APK
         uses: actions/upload-artifact@v4
