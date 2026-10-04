@@ -16,33 +16,48 @@ jobs:
           channel: 'stable'
       - name: Extract project
         run: |
-          ls -la
-          ZIP=$(find . -name "*.zip" | head -n 1)
+          # نظف اي نسخ قديمة في الـ root
+          rm -rf android ios lib test pubspec.yaml pubspec.lock analysis_options.yaml
+          ZIP=$(find . -maxdepth 2 -name "*.zip" | head -n 1)
           echo "ZIP=$ZIP"
           if [ -n "$ZIP" ]; then
             unzip -o "$ZIP" -d .
           fi
-          echo "---- after unzip ----"
-          find . -maxdepth 3 -type f -name "pubspec.yaml" | head -n 10
-          ls -la
+          echo "Finding projects with android folder:"
+          find . -type f -name "pubspec.yaml" | while read f; do
+            d=$(dirname "$f")
+            if [ -d "$d/android" ]; then
+              echo "OK -> $f has android"
+            else
+              echo "NO -> $f missing android"
+            fi
+          done
       - name: Build APK
         run: |
-          PUB=$(find . -type f -name "pubspec.yaml" -not -path "*/.pub-cache/*" -not -path "*/.github/*" | head -n 1)
-          echo "PUB found at: $PUB"
+          # دور على المشروع اللي معاه android
+          PUB=$(find . -type f -name "pubspec.yaml" -not -path "*/.pub-cache/*" | while read f; do
+            d=$(dirname "$f")
+            if [ -d "$d/android" ]; then
+              echo "$f"
+            fi
+          done | head -n 1)
+          
+          # لو مالقيناش واحد معاه اندرويد، خد اول واحد
+          if [ -z "$PUB" ]; then
+            PUB=$(find . -type f -name "pubspec.yaml" -not -path "*/.pub-cache/*" | head -n 1)
+          fi
+          
+          echo "Final PUB: $PUB"
           DIR=$(dirname "$PUB")
-          echo "DIR is: $DIR"
+          echo "DIR: $DIR"
           cd "$DIR"
-          echo "Current dir content:"
           ls -la
-          echo "Android content:"
-          ls -la android || true
-          # إصلاحات
+          ls -la android
           sed -i 's/flutter_lints: \^5\..*/flutter_lints: ^3.0.0/' pubspec.yaml || true
-          chmod +x android/gradlew || true
+          chmod +x android/gradlew
           flutter clean
           flutter pub get
-          flutter build apk --release
-          # انقل الـ APK
+          flutter build apk --release --verbose
           cp build/app/outputs/flutter-apk/app-release.apk $GITHUB_WORKSPACE/app-release.apk
       - name: Upload APK
         uses: actions/upload-artifact@v4
