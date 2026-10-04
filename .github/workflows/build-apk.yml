@@ -12,28 +12,29 @@ jobs:
           java-version: '17'
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.22.2'
+          flutter-version: '3.32.5'
           channel: 'stable'
       - name: Extract project
         run: |
-          ls -la
           ZIP=$(find . -name "*.zip" | head -n 1)
           if [ -n "$ZIP" ]; then
             unzip -o "$ZIP" -d .
           fi
-          find . -name "pubspec.yaml" | head -n 20
+          find . -name "pubspec.yaml" | head -n 5
       - name: Build APK
         run: |
           PUB=$(find . -name "pubspec.yaml" -not -path "*/.pub-cache/*" | head -n 1)
-          echo "Found pubspec at: $PUB"
           DIR=$(dirname "$PUB")
           echo "Project dir: $DIR"
           cd "$DIR"
+          # إصلاح مشكلة flutter_lints
+          sed -i 's/flutter_lints: \^5\.0\.0/flutter_lints: ^3.0.0/' pubspec.yaml || true
+          sed -i 's/flutter_lints: \^5\.\.*.*/flutter_lints: ^3.0.0/' pubspec.yaml || true
+          cat pubspec.yaml | grep lints
           flutter clean
           flutter pub get
           flutter build apk --release
-          # انقل الـ APK للـ root عشان نرفعه
-          cp build/app/outputs/flutter-apk/app-release.apk $GITHUB_WORKSPACE/app-release.apk || true
+          cp build/app/outputs/flutter-apk/app-release.apk $GITHUB_WORKSPACE/app-release.apk
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
