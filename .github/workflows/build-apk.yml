@@ -1,76 +1,25 @@
-name: Build APK
-on:
-  workflow_dispatch:
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: 'zulu'
-          java-version: '17'
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.32.5'
-          channel: 'stable'
       - name: Fix and Build
         run: |
           ZIP=$(find . -maxdepth 2 -name "*.zip" | head -n 1)
           unzip -o "$ZIP" -d .
           PUB=$(find . -type f -name "pubspec.yaml" -not -path "*/.pub-cache/*" | while read f; do d=$(dirname "$f"); [ -d "$d/android" ] && echo "$f"; done | head -n 1)
+          if [ -z "$PUB" ]; then PUB=$(find . -type f -name "pubspec.yaml" | head -n 1); fi
           DIR=$(dirname "$PUB")
           cd "$DIR"
-          
           rm -rf android
           flutter create --platforms=android .
-          
-          # 1- NDK
-          if [ -f android/app/build.gradle.kts ]; then
-            sed -i 's/ndkVersion = ".*"/ndkVersion = "27.0.12077973"/' android/app/build.gradle.kts || true
-            if ! grep -q "ndkVersion" android/app/build.gradle.kts; then
-              sed -i '/android {/a \    ndkVersion = "27.0.12077973"' android/app/build.gradle.kts
-            fi
+          # 1- NDK + Minify
+          sed -i 's/ndkVersion = ".*"/ndkVersion = "27.0.12077973"/' android/app/build.gradle.kts || true
+          if ! grep -q "ndkVersion" android/app/build.gradle.kts; then sed -i '/android {/a \    ndkVersion = "27.0.12077973"' android/app/build.gradle.kts; fi
+          sed -i 's/isMinifyEnabled = true/isMinifyEnabled = false/g' android/app/build.gradle.kts || true
+          # 2- INTERNET PERMISSION - ده اللي بيحل الـ Timeout
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if ! grep -q "INTERNET" $MANIFEST; then
+            sed -i '/<manifest/a \    <uses-permission android:name="android.permission.INTERNET" \/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" \/>' $MANIFEST
           fi
-          
-          # 2- Fix Uint8List
-          if ! grep -q "dart:typed_data" lib/main.dart; then
-            sed -i "1i import 'dart:typed_data';" lib/main.dart
-          fi
-          
-          # 3- إصلاح R8 / ML Kit - أهم حاجة
-          echo "Fixing R8 / ML Kit..."
-          # نطفي الـ minify
-          if [ -f android/app/build.gradle.kts ]; then
-            sed -i 's/isMinifyEnabled = true/isMinifyEnabled = false/g' android/app/build.gradle.kts
-            sed -i 's/isShrinkResources = true/isShrinkResources = false/g' android/app/build.gradle.kts
-          fi
-          if [ -f android/app/build.gradle ]; then
-            sed -i 's/minifyEnabled true/minifyEnabled false/g' android/app/build.gradle
-            sed -i 's/shrinkResources true/shrinkResources false/g' android/app/build.gradle
-          fi
-          
-          # نضيف keep rules لـ ML Kit
-          mkdir -p android/app/
-          echo "-keep class com.google.mlkit.** { *; }
-          -dontwarn com.google.mlkit.**
-          -keep class com.google.android.gms.** { *; }" > android/app/proguard-rules.pro
-          
-          # نضيف proguard file في الـ build لو مش موجود
-          if [ -f android/app/build.gradle.kts ]; then
-            if ! grep -q "proguard-rules.pro" android/app/build.gradle.kts; then
-              sed -i '/isMinifyEnabled = false/a \            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")' android/app/build.gradle.kts || true
-            fi
-          fi
-          
-          sed -i 's/flutter_lints: \^5\..*/flutter_lints: ^3.0.0/' pubspec.yaml || true
-          
+          # 3- Uint8List
+          if ! grep -q "dart:typed_data" lib/main.dart; then sed -i "1i import 'dart:typed_data';" lib/main.dart; fi
           flutter clean
           flutter pub get
           flutter build apk --release --no-tree-shake-icons
           cp build/app/outputs/flutter-apk/app-release.apk $GITHUB_WORKSPACE/app-release.apk
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-release
-          path: app-release.apk
