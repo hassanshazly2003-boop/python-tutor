@@ -18,28 +18,39 @@ jobs:
         run: |
           find . -name "*.zip" -exec unzip -o {} -d . \; -exec rm -f {} \; || true
           GOOGLE_JSON=$(find . -name "google-services.json" | head -n 1)
-          echo "Found json at: $GOOGLE_JSON"
-          if [ -n "$GOOGLE_JSON" ]; then
-            cp "$GOOGLE_JSON" /tmp/google-services.json
-          fi
+          if [ -n "$GOOGLE_JSON" ]; then cp "$GOOGLE_JSON" /tmp/google-services.json; fi
           PUB=$(find . -type f -name "pubspec.yaml" | head -n 1)
           DIR=$(dirname "$PUB")
-          echo "Project dir: $DIR"
           cd "$DIR"
+
+          # Fix Uint8List error in main.dart
+          if ! grep -q "dart:typed_data" lib/main.dart; then
+            sed -i '1i import "dart:typed_data";' lib/main.dart
+          fi
+
           rm -rf android
           flutter create --platforms=android .
+
           if [ -f /tmp/google-services.json ]; then
             cp /tmp/google-services.json android/app/google-services.json
-            echo "Restored OK"
-            ls -lh android/app/google-services.json
-          else
-            echo "ERROR google-services.json not found"
-            exit 1
           fi
+
+          # Fix NDK version
+          if [ -f android/app/build.gradle.kts ]; then
+            sed -i 's/ndkVersion = ".*"/ndkVersion = "27.0.12077973"/' android/app/build.gradle.kts
+            grep -q 'ndkVersion' android/app/build.gradle.kts || sed -i '/android {/a \    ndkVersion = "27.0.12077973"' android/app/build.gradle.kts
+            sed -i 's/isMinifyEnabled = true/isMinifyEnabled = false/' android/app/build.gradle.kts
+            sed -i 's/isShrinkResources = true/isShrinkResources = false/' android/app/build.gradle.kts
+          fi
+          if [ -f android/app/build.gradle ]; then
+            sed -i 's/ndkVersion ".*"/ndkVersion "27.0.12077973"/' android/app/build.gradle
+          fi
+
           flutter clean
           flutter pub get
           flutter build apk --release --no-tree-shake-icons
           cp build/app/outputs/flutter-apk/app-release.apk $GITHUB_WORKSPACE/app-release.apk
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
