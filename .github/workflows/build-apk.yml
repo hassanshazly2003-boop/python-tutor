@@ -11,19 +11,18 @@ jobs:
           java-version: '17'
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.22.0'
+          flutter-version: '3.27.0'
 
       - name: Fix project structure
         run: |
-          ls -la
           if [ -f "python-tutor-project.zip" ]; then
             unzip -o python-tutor-project.zip
             rm python-tutor-project.zip
           fi
           if [ -d "python-tutor-project" ]; then
-            mv python-tutor-project/*.
-            mv python-tutor-project/.*. 2>/dev/null || true
-            rmdir python-tutor-project
+            cp -r python-tutor-project/*.
+            cp -r python-tutor-project/.*. 2>/dev/null || true
+            rm -rf python-tutor-project
           fi
           ls -la
 
