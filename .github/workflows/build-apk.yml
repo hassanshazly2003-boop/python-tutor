@@ -18,19 +18,26 @@ jobs:
           ls -la
           if [ -f "python-tutor-project.zip" ]; then
             unzip -o python-tutor-project.zip
+            rm -f python-tutor-project.zip
           fi
-          # شوف اسم الفولدر الداخلي ايه
-          for d in python-tutor-project python-tutor app; do
+          for d in python-tutor-project python-tutor; do
             if [ -d "$d/android" ]; then
-              echo "Found project in $d"
               cp -a $d/..
               rm -rf $d
               break
             fi
           done
-          rm -f python-tutor-project.zip
           echo "--- AFTER ---"
           ls -la
+          ls -la android || echo "NO ANDROID FOLDER"
+          chmod +x android/gradlew || true
+
+      - name: Recreate android if missing
+        run: |
+          if [! -f "android/gradlew" ]; then
+            echo "gradlew missing, recreating android folder..."
+            flutter create --platforms=android.
+          fi
           chmod +x android/gradlew
           ls -la android/
 
