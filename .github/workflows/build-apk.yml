@@ -16,29 +16,39 @@ jobs:
           channel: 'stable'
       - name: Fix and Build
         run: |
-          find . -name "*.zip" -exec unzip -o {} -d . \; -exec rm -f {} \; || true
-          GOOGLE_JSON=$(find . -name "google-services.json" | head -n 1)
+          find. -name "*.zip" -exec unzip -o {} -d. \; -exec rm -f {} \; || true
+          GOOGLE_JSON=$(find. -name "google-services.json" | head -n 1)
           if [ -n "$GOOGLE_JSON" ]; then cp "$GOOGLE_JSON" /tmp/google-services.json; fi
-          PUB=$(find . -type f -name "pubspec.yaml" | head -n 1)
+          PUB=$(find. -type f -name "pubspec.yaml" | head -n 1)
           DIR=$(dirname "$PUB")
           cd "$DIR"
-          if ! grep -q "dart:typed_data" lib/main.dart; then sed -i '1i import "dart:typed_data";' lib/main.dart; fi
+
+          # استخرج الـ package الحقيقي من google-services.json
+          PKG=$(python3 -c "import json; print(json.load(open('/tmp/google-services.json'))['client'][0]['client_info']['android_client_info']['package_name'])" 2>/dev/null || echo "com.example.python_app")
+          echo "Original Package: $PKG"
+          ORG=$(echo $PKG | rev | cut -d'.' -f2- | rev)
+          NAME=$(echo $PKG | rev | cut -d'.' -f1 | rev)
+          if [ -z "$ORG" ]; then ORG="com.example"; NAME="python_app"; fi
+
+          if! grep -q "dart:typed_data" lib/main.dart; then sed -i '1i import "dart:typed_data";' lib/main.dart; fi
           rm -rf android
-          flutter create --platforms=android .
-          if [ -f /tmp/google-services.json ]; then cp /tmp/google-services.json android/app/google-services.json; fi
-          
+          flutter create --platforms=android --org $ORG --project-name $NAME.
+
+          cp /tmp/google-services.json android/app/google-services.json
+          echo "Using package: $PKG with google-services.json"
+
           cat > android/app/proguard-rules.pro <<'EOF'
           -keep class com.google.mlkit.** { *; }
           -dontwarn com.google.mlkit.**
-          -keep class com.google.android.gms.** { *; }
           EOF
 
-          # Fix NDK and Minify - with safe fallback
+          # تأكد من وجود INTERNET permission
+          grep -q "INTERNET" android/app/src/main/AndroidManifest.xml || sed -i '/<application/i \ <uses-permission android:name="android.permission.INTERNET" />' android/app/src/main/AndroidManifest.xml
+
           sed -i 's/isMinifyEnabled = true/isMinifyEnabled = false/g' android/app/build.gradle.kts 2>/dev/null || true
           sed -i 's/isShrinkResources = true/isShrinkResources = false/g' android/app/build.gradle.kts 2>/dev/null || true
           sed -i 's/ndkVersion = ".*"/ndkVersion = "27.0.12077973"/' android/app/build.gradle.kts 2>/dev/null || true
           sed -i 's/minifyEnabled true/minifyEnabled false/g' android/app/build.gradle 2>/dev/null || true
-          sed -i 's/shrinkResources true/shrinkResources false/g' android/app/build.gradle 2>/dev/null || true
 
           flutter clean
           flutter pub get
