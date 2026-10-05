@@ -15,20 +15,17 @@ jobs:
 
       - name: Fix project structure
         run: |
-          ls -la
           if [ -f "python-tutor-project.zip" ]; then
-            echo "Found ZIP, unzipping..."
             unzip -o python-tutor-project.zip
             rm python-tutor-project.zip
           fi
           if [ -d "python-tutor-project" ]; then
-            echo "Found folder, moving contents to root..."
             cp -r python-tutor-project/..
             rm -rf python-tutor-project
           fi
-          echo "Final structure:"
           ls -la
           chmod +x android/gradlew
+          ls android/
 
       - run: flutter pub get
       - run: flutter build apk --release
