@@ -15,7 +15,6 @@ jobs:
 
       - name: Fix project structure
         run: |
-          ls -la
           if [ -f "python-tutor-project.zip" ]; then
             unzip -o python-tutor-project.zip
             rm -f python-tutor-project.zip
@@ -27,19 +26,18 @@ jobs:
               break
             fi
           done
-          echo "--- AFTER ---"
           ls -la
-          ls -la android || echo "NO ANDROID FOLDER"
-          chmod +x android/gradlew || true
+          ls -la android || echo "NO ANDROID"
 
       - name: Recreate android if missing
         run: |
           if [! -f "android/gradlew" ]; then
-            echo "gradlew missing, recreating android folder..."
+            echo "gradlew not found, creating..."
             flutter create --platforms=android.
           fi
           chmod +x android/gradlew
           ls -la android/
+          ls -la android/gradle/wrapper/
 
       - run: flutter pub get
       - run: flutter build apk --release
