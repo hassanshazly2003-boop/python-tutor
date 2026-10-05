@@ -15,17 +15,24 @@ jobs:
 
       - name: Fix project structure
         run: |
+          ls -la
           if [ -f "python-tutor-project.zip" ]; then
             unzip -o python-tutor-project.zip
-            rm python-tutor-project.zip
           fi
-          if [ -d "python-tutor-project" ]; then
-            cp -r python-tutor-project/..
-            rm -rf python-tutor-project
-          fi
+          # شوف اسم الفولدر الداخلي ايه
+          for d in python-tutor-project python-tutor app; do
+            if [ -d "$d/android" ]; then
+              echo "Found project in $d"
+              cp -a $d/..
+              rm -rf $d
+              break
+            fi
+          done
+          rm -f python-tutor-project.zip
+          echo "--- AFTER ---"
           ls -la
           chmod +x android/gradlew
-          ls android/
+          ls -la android/
 
       - run: flutter pub get
       - run: flutter build apk --release
