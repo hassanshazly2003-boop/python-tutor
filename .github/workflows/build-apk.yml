@@ -27,19 +27,18 @@ jobs:
           flutter create --platforms=android .
           if [ -f /tmp/google-services.json ]; then cp /tmp/google-services.json android/app/google-services.json; fi
           
-          # Fix NDK and Disable R8/Minify completely
           cat > android/app/proguard-rules.pro <<'EOF'
           -keep class com.google.mlkit.** { *; }
           -dontwarn com.google.mlkit.**
           -keep class com.google.android.gms.** { *; }
           EOF
 
-          # Disable minification in build.gradle.kts
-          sed -i 's/isMinifyEnabled = true/isMinifyEnabled = false/g' android/app/build.gradle.kts
-          sed -i 's/isShrinkResources = true/isShrinkResources = false/g' android/app/build.gradle.kts
-          sed -i 's/minifyEnabled true/minifyEnabled false/g' android/app/build.gradle
-          sed -i 's/shrinkResources true/shrinkResources false/g' android/app/build.gradle
-          sed -i 's/ndkVersion = ".*"/ndkVersion = "27.0.12077973"/' android/app/build.gradle.kts
+          # Fix NDK and Minify - with safe fallback
+          sed -i 's/isMinifyEnabled = true/isMinifyEnabled = false/g' android/app/build.gradle.kts 2>/dev/null || true
+          sed -i 's/isShrinkResources = true/isShrinkResources = false/g' android/app/build.gradle.kts 2>/dev/null || true
+          sed -i 's/ndkVersion = ".*"/ndkVersion = "27.0.12077973"/' android/app/build.gradle.kts 2>/dev/null || true
+          sed -i 's/minifyEnabled true/minifyEnabled false/g' android/app/build.gradle 2>/dev/null || true
+          sed -i 's/shrinkResources true/shrinkResources false/g' android/app/build.gradle 2>/dev/null || true
 
           flutter clean
           flutter pub get
