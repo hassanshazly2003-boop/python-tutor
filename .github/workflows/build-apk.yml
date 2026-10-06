@@ -1,58 +1,79 @@
 name: Build APK
 on:
   workflow_dispatch:
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      # اسم الزيب اللي هيتبني. لو غيرته في الريبو غيّر الاسم هنا
+      ZIP_NAME: python-tutor-project.zip
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
+
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.32.5'
           channel: 'stable'
-      - name: Fix and Build
+
+      - name: Unpack project
         run: |
-          find. -name "*.zip" -exec unzip -o {} -d. \; -exec rm -f {} \; || true
-          GOOGLE_JSON=$(find. -name "google-services.json" | head -n 1)
-          if [ -n "$GOOGLE_JSON" ]; then cp "$GOOGLE_JSON" /tmp/google-services.json; fi
-          PUB=$(find. -type f -name "pubspec.yaml" | head -n 1)
-          DIR=$(dirname "$PUB")
-          cd "$DIR"
+          set -e
+          ZIP="$ZIP_NAME"
+          if [ ! -f "$ZIP" ]; then
+            ZIP=$(find . -maxdepth 2 -name "*.zip" | sort | tail -n 1)
+          fi
+          echo "Using ZIP: $ZIP"
+          rm -rf app_src
+          mkdir app_src
+          unzip -oq "$ZIP" -d app_src
+          PUB=$(find app_src -maxdepth 2 -name pubspec.yaml | head -n 1)
+          [ -n "$PUB" ] || { echo "pubspec.yaml not found in zip"; exit 1; }
+          echo "PROJECT_DIR=$(dirname "$PUB")" >> $GITHUB_ENV
 
-          # استخرج الـ package الحقيقي من google-services.json
-          PKG=$(python3 -c "import json; print(json.load(open('/tmp/google-services.json'))['client'][0]['client_info']['android_client_info']['package_name'])" 2>/dev/null || echo "com.example.python_app")
-          echo "Original Package: $PKG"
-          ORG=$(echo $PKG | rev | cut -d'.' -f2- | rev)
-          NAME=$(echo $PKG | rev | cut -d'.' -f1 | rev)
-          if [ -z "$ORG" ]; then ORG="com.example"; NAME="python_app"; fi
+      - name: Regenerate android and restore project settings
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          set -e
+          mkdir -p /tmp/orig
+          cp -r android /tmp/orig/android 2>/dev/null || true
 
-          if! grep -q "dart:typed_data" lib/main.dart; then sed -i '1i import "dart:typed_data";' lib/main.dart; fi
           rm -rf android
-          flutter create --platforms=android --org $ORG --project-name $NAME.
+          flutter create --platforms=android .
 
-          cp /tmp/google-services.json android/app/google-services.json
-          echo "Using package: $PKG with google-services.json"
+          APP=android/app/build.gradle.kts
+          MANIFEST=android/app/src/main/AndroidManifest.xml
 
-          cat > android/app/proguard-rules.pro <<'EOF'
-          -keep class com.google.mlkit.** { *; }
-          -dontwarn com.google.mlkit.**
-          EOF
+          # نفس الـ applicationId القديم (لازم يطابق google-services.json)
+          sed -i 's/applicationId = ".*"/applicationId = "com.pylearn.app"/' $APP
+          # Firebase محتاج minSdk 23 على الأقل، والمشروع الأصلي كان 24
+          sed -i 's/minSdk = .*/minSdk = 24/' $APP
 
-          # تأكد من وجود INTERNET permission
-          grep -q "INTERNET" android/app/src/main/AndroidManifest.xml || sed -i '/<application/i \ <uses-permission android:name="android.permission.INTERNET" />' android/app/src/main/AndroidManifest.xml
+          # ملف Firebase + بلجن google-services
+          cp /tmp/orig/android/app/google-services.json android/app/google-services.json
+          sed -i '/id("org.jetbrains.kotlin.android")/a \    id("com.google.gms.google-services") version "4.4.2" apply false' android/settings.gradle.kts
+          sed -i '/id("dev.flutter.flutter-gradle-plugin")/a \    id("com.google.gms.google-services")' $APP
 
-          sed -i 's/isMinifyEnabled = true/isMinifyEnabled = false/g' android/app/build.gradle.kts 2>/dev/null || true
-          sed -i 's/isShrinkResources = true/isShrinkResources = false/g' android/app/build.gradle.kts 2>/dev/null || true
-          sed -i 's/ndkVersion = ".*"/ndkVersion = "27.0.12077973"/' android/app/build.gradle.kts 2>/dev/null || true
-          sed -i 's/minifyEnabled true/minifyEnabled false/g' android/app/build.gradle 2>/dev/null || true
+          # صلاحيات الإنترنت والكاميرا (flutter create بيحطهم في debug بس، فالـ release كان هيبقى من غير إنترنت)
+          sed -i 's|<manifest[^>]*>|&\n    <uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.CAMERA"/>|' $MANIFEST
+          sed -i 's/android:label="[^"]*"/android:label="Python"/' $MANIFEST
 
-          flutter clean
+          echo "--- check ---"
+          grep -n "applicationId\|minSdk\|google-services" $APP android/settings.gradle.kts
+          grep -n "uses-permission" $MANIFEST
+          ls android/app/google-services.json
+
+      - name: Build
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          set -e
           flutter pub get
-          flutter build apk --release --no-tree-shake-icons --no-shrink
+          flutter build apk --release --no-tree-shake-icons
           cp build/app/outputs/flutter-apk/app-release.apk $GITHUB_WORKSPACE/app-release.apk
 
       - name: Upload APK
@@ -60,3 +81,4 @@ jobs:
         with:
           name: app-release
           path: app-release.apk
+          
