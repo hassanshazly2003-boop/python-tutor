@@ -53,13 +53,15 @@ jobs:
           sed -i 's/applicationId = ".*"/applicationId = "com.pylearn.app"/' $APP
           # Firebase محتاج minSdk 23 على الأقل، والمشروع الأصلي كان 24
           sed -i 's/minSdk = .*/minSdk = 24/' $APP
+          # البلجنز (firebase, mlkit, ...) محتاجة NDK 27
+          sed -i 's/ndkVersion = .*/ndkVersion = "27.0.12077973"/' $APP
 
           # ملف Firebase + بلجن google-services
           cp /tmp/orig/android/app/google-services.json android/app/google-services.json
           sed -i '/id("org.jetbrains.kotlin.android")/a \    id("com.google.gms.google-services") version "4.4.2" apply false' android/settings.gradle.kts
           sed -i '/id("dev.flutter.flutter-gradle-plugin")/a \    id("com.google.gms.google-services")' $APP
 
-          # صلاحيات الإنترنت والكاميرا (flutter create بيحطهم في debug بس، فالـ release كان هيبقى من غير إنترنت)
+          # صلاحيات الإنترنت والكاميرا
           sed -i 's|<manifest[^>]*>|&\n    <uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.CAMERA"/>|' $MANIFEST
           sed -i 's/android:label="[^"]*"/android:label="Python"/' $MANIFEST
 
@@ -72,6 +74,9 @@ jobs:
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           set -e
+          # إصلاح Uint8List في main.dart لو الـ import ناقص
+          grep -q "dart:typed_data" lib/main.dart || sed -i "1i import 'dart:typed_data';" lib/main.dart
+          grep -n "ndkVersion" android/app/build.gradle.kts
           flutter pub get
           flutter build apk --release --no-tree-shake-icons
           cp build/app/outputs/flutter-apk/app-release.apk $GITHUB_WORKSPACE/app-release.apk
@@ -81,4 +86,3 @@ jobs:
         with:
           name: app-release
           path: app-release.apk
-          
