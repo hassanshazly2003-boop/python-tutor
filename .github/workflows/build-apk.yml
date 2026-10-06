@@ -55,6 +55,9 @@ jobs:
           sed -i 's/minSdk = .*/minSdk = 24/' $APP
           # البلجنز (firebase, mlkit, ...) محتاجة NDK 27
           sed -i 's/ndkVersion = .*/ndkVersion = "27.0.12077973"/' $APP
+          # إيقاف R8 صراحةً (كلاسات mlkit الاختيارية ناقصة وبتوقف البناء)
+          sed -i '/signingConfig = signingConfigs.getByName("debug")/a \            isMinifyEnabled = false' $APP
+          sed -i '/signingConfig = signingConfigs.getByName("debug")/a \            isShrinkResources = false' $APP
 
           # ملف Firebase + بلجن google-services
           cp /tmp/orig/android/app/google-services.json android/app/google-services.json
@@ -66,7 +69,7 @@ jobs:
           sed -i 's/android:label="[^"]*"/android:label="Python"/' $MANIFEST
 
           echo "--- check ---"
-          grep -n "applicationId\|minSdk\|google-services" $APP android/settings.gradle.kts
+          grep -n "applicationId\|minSdk\|google-services\|isMinifyEnabled\|isShrinkResources" $APP android/settings.gradle.kts
           grep -n "uses-permission" $MANIFEST
           ls android/app/google-services.json
 
