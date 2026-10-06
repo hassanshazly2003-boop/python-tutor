@@ -78,7 +78,7 @@ jobs:
           grep -q "dart:typed_data" lib/main.dart || sed -i "1i import 'dart:typed_data';" lib/main.dart
           grep -n "ndkVersion" android/app/build.gradle.kts
           flutter pub get
-          flutter build apk --release --no-tree-shake-icons
+          flutter build apk --release --no-shrink --no-tree-shake-icons
           cp build/app/outputs/flutter-apk/app-release.apk $GITHUB_WORKSPACE/app-release.apk
 
       - name: Upload APK
