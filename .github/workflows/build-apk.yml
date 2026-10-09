@@ -6,7 +6,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     env:
       ZIP_NAME: python-tutor-project.zip
 
@@ -50,77 +49,67 @@ jobs:
           set -e
           rm -rf android
           flutter create --platforms=android .
-          
-          if [ -f "android/app/build.gradle.kts" ]; then
-            APP="android/app/build.gradle.kts"
-          else
-            APP="android/app/build.gradle"
-          fi
+          if [ -f "android/app/build.gradle.kts" ]; then APP="android/app/build.gradle.kts"; else APP="android/app/build.gradle"; fi
           MANIFEST="android/app/src/main/AndroidManifest.xml"
-          echo "Using gradle file: $APP"
-
           sed -i 's/applicationId = ".*"/applicationId = "com.pylearn.app"/' "$APP" || sed -i 's/applicationId ".*"/applicationId "com.pylearn.app"/' "$APP"
           sed -i 's/minSdk = .*/minSdk = 24/' "$APP" || sed -i 's/minSdkVersion .*/minSdkVersion 24/' "$APP"
           sed -i '/isMinifyEnabled/d' "$APP" || true
           sed -i '/isShrinkResources/d' "$APP" || true
           sed -i '/minifyEnabled/d' "$APP" || true
           sed -i '/shrinkResources/d' "$APP" || true
-
-          sed -i 's|<manifest[^>]*>|&\
-              <uses-permission android:name="android.permission.INTERNET"/>\
-              <uses-permission android:name="android.permission.CAMERA"/>|' "$MANIFEST"
+          sed -i 's|<manifest[^>]*>|& <uses-permission android:name="android.permission.INTERNET"/>|' "$MANIFEST"
           sed -i 's/android:label="[^"]*"/android:label="Python"/' "$MANIFEST"
 
       - name: Fix Flutter dependencies
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           set -e
+          rm -f pubspec.lock
           cat > pubspec.yaml << 'EOF'
           name: python_app
           description: A bilingual Arabic-English Python learning and coding assistant app.
           publish_to: 'none'
           version: 1.0.0+1
-
           environment:
             sdk: '>=3.4.0 <4.0.0'
-
           dependencies:
             flutter:
               sdk: flutter
-            cupertino_icons: ^1.0.6
-            shared_preferences: ^2.2.2
-            http: ^1.1.0
+            cupertino_icons: ^1.0.8
+            shared_preferences: ^2.3.3
+            http: ^1.2.2
             flutter_markdown_plus: ^1.0.12
             google_fonts: ^6.1.0
-
           dev_dependencies:
             flutter_test:
               sdk: flutter
-            flutter_lints: ^3.0.0
-
+            flutter_lints: ^4.0.0
           flutter:
             uses-material-design: true
           EOF
-          cat pubspec.yaml
           flutter pub get
 
-      - name: Patch main.dart imports
+      - name: Patch main.dart
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           set -e
-          sed -i 's/flutter_markdown/flutter_markdown_plus/g' lib/main.dart || true
-          sed -i '/firebase_core/d' lib/main.dart || true
-          sed -i '/google_mlkit/d' lib/main.dart || true
-          sed -i '/image_picker/d' lib/main.dart || true
-          sed -i '/in_app_purchase/d' lib/main.dart || true
-          echo "Patched main.dart imports:"
-          head -n 30 lib/main.dart
+          # إصلاح الـ import بتاع الماركداون
+          sed -i "s/package:flutter_markdown\/flutter_markdown.dart/package:flutter_markdown_plus\/flutter_markdown_plus.dart/g" lib/main.dart || true
+          sed -i "s/flutter_markdown/flutter_markdown_plus/g" lib/main.dart || true
+          # مسح المكتبات اللي بتعمل مشاكل build
+          sed -i "/firebase_core/d" lib/main.dart || true
+          sed -i "/firebase_/d" lib/main.dart || true
+          sed -i "/google_mlkit/d" lib/main.dart || true
+          sed -i "/image_picker/d" lib/main.dart || true
+          sed -i "/in_app_purchase/d" lib/main.dart || true
 
       - name: Build APK
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           set -e
-          flutter analyze --no-fatal-infos || true
+          flutter clean
+          flutter pub get
+          flutter analyze || true
           flutter build apk --release --split-per-abi --no-tree-shake-icons
           ls -lh build/app/outputs/flutter-apk/
           ARM64=$(find build/app/outputs/flutter-apk -name "*arm64*.apk" | head -n 1)
