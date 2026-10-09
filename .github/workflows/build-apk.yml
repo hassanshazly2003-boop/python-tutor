@@ -23,142 +23,114 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.32.5'
+          flutter-version: '3.22.5'
           channel: 'stable'
 
       - name: Unpack project
         run: |
           set -e
-
           ZIP="$ZIP_NAME"
-
           if [ ! -f "$ZIP" ]; then
             ZIP=$(find . -maxdepth 2 -name "*.zip" | sort | tail -n 1)
           fi
-
           echo "Using ZIP: $ZIP"
-
           rm -rf app_src
           mkdir -p app_src
-
           unzip -oq "$ZIP" -d app_src
-
           PUB=$(find app_src -maxdepth 3 -name pubspec.yaml | head -n 1)
-
           if [ -z "$PUB" ]; then
             echo "pubspec.yaml not found"
             exit 1
           fi
-
           echo "PROJECT_DIR=$(dirname "$PUB")" >> "$GITHUB_ENV"
 
       - name: Regenerate Android
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           set -e
-
           mkdir -p /tmp/orig
-
           cp -r android /tmp/orig/android 2>/dev/null || true
-
           rm -rf android
-
           flutter create --platforms=android .
-
           APP="android/app/build.gradle.kts"
           MANIFEST="android/app/src/main/AndroidManifest.xml"
-
-          # Application ID
           sed -i 's/applicationId = ".*"/applicationId = "com.pylearn.app"/' "$APP"
-
-          # Minimum Android SDK
           sed -i 's/minSdk = .*/minSdk = 24/' "$APP"
-
-          # NDK
           sed -i 's/ndkVersion = .*/ndkVersion = "27.0.12077973"/' "$APP"
-
-          # Disable shrinking/minification
           sed -i '/isMinifyEnabled/d' "$APP"
           sed -i '/isShrinkResources/d' "$APP"
-
           sed -i '/signingConfig = signingConfigs.getByName("debug")/a\
               isMinifyEnabled = false\
               isShrinkResources = false' "$APP"
-
-          # Restore Firebase configuration if available
-          if [ -f "/tmp/orig/android/app/google-services.json" ]; then
-            cp "/tmp/orig/android/app/google-services.json" \
-              "android/app/google-services.json"
-          fi
-
-          # Google Services plugin
-          if [ -f "android/settings.gradle.kts" ]; then
-            sed -i '/id("org.jetbrains.kotlin.android")/a\
-              id("com.google.gms.google-services") version "4.4.2" apply false' \
-              android/settings.gradle.kts
-          fi
-
-          sed -i '/id("dev.flutter.flutter-gradle-plugin")/a\
-              id("com.google.gms.google-services")' "$APP"
-
-          # Permissions
           sed -i 's|<manifest[^>]*>|&\
               <uses-permission android:name="android.permission.INTERNET"/>\
               <uses-permission android:name="android.permission.CAMERA"/>|' \
               "$MANIFEST"
-
-          # App name
           sed -i 's/android:label="[^"]*"/android:label="Python"/' "$MANIFEST"
 
       - name: Fix Flutter dependencies
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           set -e
+          echo "Fixing pubspec.yaml to compatible versions..."
+          cat > pubspec.yaml << 'EOF'
+          name: python_app
+          description: A bilingual Arabic-English Python learning and coding assistant app.
+          publish_to: 'none'
+          version: 1.0.0+1
 
-          echo "Current pubspec.yaml:"
+          environment:
+            sdk: '>=3.0.0 <4.0.0'
+
+          dependencies:
+            flutter:
+              sdk: flutter
+            cupertino_icons: ^1.0.6
+            shared_preferences: ^2.2.2
+            http: ^1.1.0
+            flutter_markdown_plus: ^0.1.3
+            google_fonts: ^6.1.0
+
+          dev_dependencies:
+            flutter_test:
+              sdk: flutter
+            flutter_lints: ^3.0.0
+
+          flutter:
+            uses-material-design: true
+          EOF
+
           cat pubspec.yaml
-
-          # Required by main.dart
-          flutter pub add flutter_markdown:^0.7.7
-          flutter pub add google_fonts:^6.3.3
-          flutter pub add shared_preferences:^2.5.4
-
-          echo ""
-          echo "Updated pubspec.yaml:"
-          cat pubspec.yaml
-
           flutter pub get
+
+      - name: Patch main.dart imports
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          set -e
+          # حول flutter_markdown القديم للجديد
+          sed -i 's/flutter_markdown/flutter_markdown_plus/g' lib/main.dart
+          # احذف اي import مش محتاجينه بيعمل مشاكل
+          sed -i '/firebase_core/d' lib/main.dart
+          sed -i '/google_mlkit/d' lib/main.dart
+          sed -i '/image_picker/d' lib/main.dart
+          sed -i '/in_app_purchase/d' lib/main.dart
 
       - name: Build APK
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           set -e
-
-          # Add typed_data only if the source actually needs it
           if grep -q "Uint8List\|ByteData\|ByteBuffer" lib/main.dart; then
             grep -q "dart:typed_data" lib/main.dart || \
               sed -i "1i import 'dart:typed_data';" lib/main.dart
           fi
-
           flutter analyze --no-fatal-infos || true
-
-          flutter build apk \
-            --release \
-            --split-per-abi \
-            --no-tree-shake-icons
-
-          echo ""
-          echo "Generated APK files:"
+          flutter build apk --release --split-per-abi --no-tree-shake-icons
           ls -lh build/app/outputs/flutter-apk/
-
-          ARM64=$(find build/app/outputs/flutter-apk \
-            -name "*arm64*.apk" | head -n 1)
-
+          ARM64=$(find build/app/outputs/flutter-apk -name "*arm64*.apk" | head -n 1)
           if [ -z "$ARM64" ]; then
             echo "ARM64 APK not found"
             exit 1
           fi
-
           cp "$ARM64" "$GITHUB_WORKSPACE/app-release.apk"
 
       - name: Upload APK
