@@ -29,49 +29,81 @@ jobs:
       - name: Unpack project
         run: |
           set -e
+
           ZIP="$ZIP_NAME"
+
           if [ ! -f "$ZIP" ]; then
             ZIP=$(find . -maxdepth 2 -name "*.zip" | sort | tail -n 1)
           fi
+
           echo "Using ZIP: $ZIP"
+
           rm -rf app_src
           mkdir -p app_src
+
           unzip -oq "$ZIP" -d app_src
+
           PUB=$(find app_src -maxdepth 3 -name pubspec.yaml | head -n 1)
+
           if [ -z "$PUB" ]; then
             echo "pubspec.yaml not found"
             exit 1
           fi
+
           echo "PROJECT_DIR=$(dirname "$PUB")" >> "$GITHUB_ENV"
 
       - name: Regenerate Android
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           set -e
-          mkdir -p /tmp/orig
-          cp -r android /tmp/orig/android 2>/dev/null || true
+
           rm -rf android
           flutter create --platforms=android .
-          APP="android/app/build.gradle.kts"
+
+          # تحديد اسم ملف gradle الصح (kts او gradle العادي)
+          if [ -f "android/app/build.gradle.kts" ]; then
+            APP="android/app/build.gradle.kts"
+          else
+            APP="android/app/build.gradle"
+          fi
+
           MANIFEST="android/app/src/main/AndroidManifest.xml"
-          sed -i 's/applicationId = ".*"/applicationId = "com.pylearn.app"/' "$APP"
-          sed -i 's/minSdk = .*/minSdk = 24/' "$APP"
-          sed -i 's/ndkVersion = .*/ndkVersion = "27.0.12077973"/' "$APP"
+
+          echo "Using gradle file: $APP"
+
+          # Application ID
+          sed -i 's/applicationId = ".*"/applicationId = "com.pylearn.app"/' "$APP" || sed -i 's/applicationId ".*"/applicationId "com.pylearn.app"/' "$APP"
+
+          # Minimum Android SDK
+          sed -i 's/minSdk = .*/minSdk = 24/' "$APP" || sed -i 's/minSdkVersion .*/minSdkVersion 24/' "$APP"
+
+          # NDK
+          sed -i 's/ndkVersion = .*/ndkVersion = "27.0.12077973"/' "$APP" || true
+
+          # Disable shrinking/minification
           sed -i '/isMinifyEnabled/d' "$APP"
           sed -i '/isShrinkResources/d' "$APP"
+          sed -i '/minifyEnabled/d' "$APP"
+          sed -i '/shrinkResources/d' "$APP"
+
           sed -i '/signingConfig = signingConfigs.getByName("debug")/a\
               isMinifyEnabled = false\
-              isShrinkResources = false' "$APP"
+              isShrinkResources = false' "$APP" || true
+
+          # Permissions
           sed -i 's|<manifest[^>]*>|&\
               <uses-permission android:name="android.permission.INTERNET"/>\
               <uses-permission android:name="android.permission.CAMERA"/>|' \
               "$MANIFEST"
+
+          # App name
           sed -i 's/android:label="[^"]*"/android:label="Python"/' "$MANIFEST"
 
       - name: Fix Flutter dependencies
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           set -e
+
           echo "Fixing pubspec.yaml to compatible versions..."
           cat > pubspec.yaml << 'EOF'
           name: python_app
@@ -107,30 +139,43 @@ jobs:
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           set -e
-          # حول flutter_markdown القديم للجديد
-          sed -i 's/flutter_markdown/flutter_markdown_plus/g' lib/main.dart
-          # احذف اي import مش محتاجينه بيعمل مشاكل
-          sed -i '/firebase_core/d' lib/main.dart
-          sed -i '/google_mlkit/d' lib/main.dart
-          sed -i '/image_picker/d' lib/main.dart
-          sed -i '/in_app_purchase/d' lib/main.dart
+          # حول المكتبة القديمة للجديدة
+          sed -i 's/flutter_markdown/flutter_markdown_plus/g' lib/main.dart || true
+          # امسح المكتبات اللي بتعمل exit code 65
+          sed -i '/firebase_core/d' lib/main.dart || true
+          sed -i '/google_mlkit/d' lib/main.dart || true
+          sed -i '/image_picker/d' lib/main.dart || true
+          sed -i '/in_app_purchase/d' lib/main.dart || true
 
       - name: Build APK
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           set -e
+
           if grep -q "Uint8List\|ByteData\|ByteBuffer" lib/main.dart; then
             grep -q "dart:typed_data" lib/main.dart || \
               sed -i "1i import 'dart:typed_data';" lib/main.dart
           fi
+
           flutter analyze --no-fatal-infos || true
-          flutter build apk --release --split-per-abi --no-tree-shake-icons
+
+          flutter build apk \
+            --release \
+            --split-per-abi \
+            --no-tree-shake-icons
+
+          echo ""
+          echo "Generated APK files:"
           ls -lh build/app/outputs/flutter-apk/
-          ARM64=$(find build/app/outputs/flutter-apk -name "*arm64*.apk" | head -n 1)
+
+          ARM64=$(find build/app/outputs/flutter-apk \
+            -name "*arm64*.apk" | head -n 1)
+
           if [ -z "$ARM64" ]; then
             echo "ARM64 APK not found"
             exit 1
           fi
+
           cp "$ARM64" "$GITHUB_WORKSPACE/app-release.apk"
 
       - name: Upload APK
