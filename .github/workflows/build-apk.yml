@@ -29,9 +29,10 @@ jobs:
         run: |
           set -e
           ZIP="$ZIP_NAME"
-          if [! -f "$ZIP" ]; then
-            ZIP=$(find. -maxdepth 2 -name "*.zip" | sort | tail -n 1)
+          if [ ! -f "$ZIP" ]; then
+            ZIP=$(find . -maxdepth 2 -name "*.zip" | sort | tail -n 1)
           fi
+          echo "Using ZIP: $ZIP"
           rm -rf app_src
           mkdir -p app_src
           unzip -oq "$ZIP" -d app_src
@@ -43,20 +44,22 @@ jobs:
         run: |
           set -e
           rm -rf android
-          flutter create --platforms=android.
+          flutter create --platforms=android .
           if [ -f "android/app/build.gradle.kts" ]; then
             APP="android/app/build.gradle.kts"
             sed -i 's/applicationId = ".*"/applicationId = "com.pylearn.app"/' "$APP"
-            sed -i 's/minSdk =.*/minSdk = 24/' "$APP"
-            sed -i 's/ndkVersion = ".*"/ndkVersion = "27.0.12077973"/' "$APP" || sed -i '/minSdk = 24/a\ ndkVersion = "27.0.12077973"' "$APP"
+            sed -i 's/minSdk = .*/minSdk = 24/' "$APP"
+            sed -i 's/ndkVersion = ".*"/ndkVersion = "27.0.12077973"/' "$APP" || echo '    ndkVersion = "27.0.12077973"' >> "$APP"
+            sed -i '/isMinifyEnabled/d; /isShrinkResources/d; /minifyEnabled/d; /shrinkResources/d' "$APP" || true
           else
             APP="android/app/build.gradle"
             sed -i 's/applicationId ".*"/applicationId "com.pylearn.app"/' "$APP"
-            sed -i 's/minSdkVersion.*/minSdkVersion 24/' "$APP"
-            sed -i 's/ndkVersion ".*"/ndkVersion "27.0.12077973"/' "$APP" || sed -i '/minSdkVersion/a\ ndkVersion "27.0.12077973"' "$APP"
+            sed -i 's/minSdkVersion .*/minSdkVersion 24/' "$APP"
+            sed -i 's/ndkVersion ".*"/ndkVersion "27.0.12077973"/' "$APP" || echo '    ndkVersion "27.0.12077973"' >> "$APP"
+            sed -i '/minifyEnabled/d; /shrinkResources/d' "$APP" || true
           fi
 
-      - name: Fix dependencies
+      - name: Fix Flutter dependencies
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           set -e
@@ -82,20 +85,18 @@ jobs:
           flutter:
             uses-material-design: true
           EOF
-          cat > lib/main.dart << 'DART'
-          import 'package:flutter/material.dart';
-          import 'package:flutter_markdown/flutter_markdown.dart';
-          import 'package:google_fonts/google_fonts.dart';
-          void main()=>runApp(const PythonApp());
-          class PythonApp extends StatelessWidget{const PythonApp({super.key});@override Widget build(BuildContext context){return MaterialApp(debugShowCheckedModeBanner:false,title:'Python Tutor',theme:ThemeData.dark(useMaterial3:true,textTheme:GoogleFonts.cairoTextTheme()),home:const HomePage());}}
-          class HomePage extends StatelessWidget{const HomePage({super.key});@override Widget build(BuildContext context){final lessons=[{'t':'Hello World','c':'print("Hello")','d':'اول كود بايثون'},{'t':'Variables','c':'name="Ahmed"\nage=20','d':'المتغيرات'},{'t':'If Condition','c':'x=10\nif x>5:\n print("كبير")','d':'جملة الشرط'},{'t':'Loop','c':'for i in range(5):\n print(i)','d':'التكرار'}];return Scaffold(appBar:AppBar(title:const Text('Python Tutor')),body:ListView.builder(padding:const EdgeInsets.all(12),itemCount:lessons.length,itemBuilder:(c,i)=>Card(child:ExpansionTile(title:Text(lessons[i]['t']!),children:[Padding(padding:const EdgeInsets.all(12),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[MarkdownBody(data:lessons[i]['d']!),const SizedBox(height:8),Container(width:double.infinity,padding:const EdgeInsets.all(10),color:Colors.black,child:Text(lessons[i]['c']!,style:GoogleFonts.jetBrainsMono(color:Colors.greenAccent)))]))]))));}}
-          DART
           flutter pub get
+
+      - name: Patch main.dart
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          sed -i 's/flutter_markdown_plus/flutter_markdown/g' lib/main.dart || true
 
       - name: Build APK
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           flutter build apk --release --split-per-abi --no-tree-shake-icons
+          ls -lh build/app/outputs/flutter-apk/
           cp $(find build/app/outputs/flutter-apk -name "*arm64*.apk" | head -n 1) $GITHUB_WORKSPACE/app-release.apk
 
       - name: Upload APK
